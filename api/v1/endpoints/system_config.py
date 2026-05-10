@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 import os
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
 from api.deps import get_system_config_service
 from api.v1.schemas.common import ErrorResponse
@@ -28,7 +28,7 @@ from api.v1.schemas.system_config import (
     ValidateSystemConfigRequest,
     ValidateSystemConfigResponse,
 )
-from src.auth import is_auth_enabled, refresh_auth_state
+from src.auth import COOKIE_NAME, is_auth_enabled, refresh_auth_state, verify_session
 from src.services.system_config_service import (
     ConfigConflictError,
     ConfigImportError,
@@ -41,7 +41,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-def _allow_env_backup_access() -> None:
+def _allow_env_backup_access(request: Request) -> None:
     """Gate raw .env backup/restore to explicit secure modes.
 
     - Desktop runtime keeps existing local behavior via DSA_DESKTOP_MODE.
@@ -52,6 +52,9 @@ def _allow_env_backup_access() -> None:
 
     refresh_auth_state()
     if is_auth_enabled():
+        cookie_val = request.cookies.get(COOKIE_NAME)
+        if not (cookie_val and verify_session(cookie_val)):
+            raise PermissionError("System configuration backup requires a valid admin session")
         return
 
     raise PermissionError("System configuration backup endpoints are not enabled")
@@ -182,11 +185,12 @@ def update_system_config(
     description="Return the raw saved .env content for configuration backup.",
 )
 def export_system_config(
+    request: Request,
     service: SystemConfigService = Depends(get_system_config_service),
 ) -> ExportSystemConfigResponse:
     """Export the active `.env` file for config backup."""
     try:
-        _allow_env_backup_access()
+        _allow_env_backup_access(request)
     except PermissionError as exc:
         logger.warning("System config export blocked: %s", exc)
         raise HTTPException(
@@ -238,11 +242,12 @@ def export_system_config(
 )
 def import_system_config(
     request: ImportSystemConfigRequest,
+    request_obj: Request,
     service: SystemConfigService = Depends(get_system_config_service),
 ) -> UpdateSystemConfigResponse:
     """Import a `.env` backup into the active config."""
     try:
-        _allow_env_backup_access()
+        _allow_env_backup_access(request_obj)
     except PermissionError as exc:
         logger.warning("System config import blocked: %s", exc)
         raise HTTPException(
