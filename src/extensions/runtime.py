@@ -63,7 +63,7 @@ class ExtensionRuntime:
             payload=payload,
             context=context,
             run_id=run_id,
-            run_callable=lambda: self._execute_now(action, payload, context, run_id, input_hash).to_dict(),
+            run_callable=lambda: self._execute_async_task(action, payload, context, run_id, input_hash),
         )
         return ActionResult(
             action.action_id,
@@ -74,6 +74,12 @@ class ExtensionRuntime:
             input_hash=input_hash,
             metadata={"task_type": "plugin", "caller": context.caller},
         )
+
+    def _execute_async_task(self, action, payload, context, run_id, input_hash):
+        result = self._execute_now(action, payload, context, run_id, input_hash).to_dict()
+        if not result.get("ok", False):
+            raise RuntimeError(self._failure_message(result))
+        return result
 
     def _execute_now(self, action, payload, context, run_id, input_hash):
         try:
@@ -128,6 +134,14 @@ class ExtensionRuntime:
     def _timeout_seconds(action, context):
         budget_timeout = context.budget.timeout_seconds
         return action.timeout_seconds if budget_timeout <= 0 else min(action.timeout_seconds, budget_timeout)
+
+    @staticmethod
+    def _failure_message(result):
+        error = result.get("error") if isinstance(result, dict) else None
+        error = error if isinstance(error, dict) else {}
+        code = str(error.get("code") or result.get("status") or "action_failed")
+        message = str(error.get("message") or "Action execution failed.")
+        return f"{code}: {message}"
 
     @staticmethod
     def _failure(action_id, run_id, code, message, input_hash, details=None):

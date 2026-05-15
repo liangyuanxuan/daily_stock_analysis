@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+from concurrent.futures import Future
 import time
 import unittest
 from types import SimpleNamespace
@@ -13,9 +14,12 @@ from src.extensions import (
     ActionMode,
     ExtensionRegistry,
     ExtensionRuntime,
+    create_builtin_extension_registry,
     create_builtin_extension_runtime,
 )
 from src.extensions.permissions import ActionPermissionGuard
+from src.extensions.tasks import ActionTaskRunner
+from src.services.task_queue import AnalysisTaskQueue, TaskStatus
 
 
 def _echo(payload, context):
@@ -117,6 +121,37 @@ class ExtensionRuntimeTestCase(unittest.TestCase):
         self.assertEqual(result.status, "accepted")
         self.assertEqual(result.task_id, "task_123")
         self.assertEqual(task_runner.calls[0], {"action_id": "test.async_echo", "payload": {"symbol": "600519"}, "caller": "agent"})
+
+    def test_async_builtin_action_failure_marks_queue_task_failed(self):
+        class SyncExecutor:
+            def submit(self, func, *args):
+                future = Future()
+                try:
+                    future.set_result(func(*args))
+                except Exception as exc:  # pragma: no cover - the queue handles task failures
+                    future.set_exception(exc)
+                return future
+
+        original_instance = AnalysisTaskQueue._instance
+        AnalysisTaskQueue._instance = None
+        try:
+            queue = AnalysisTaskQueue(max_workers=1)
+            queue._executor = SyncExecutor()
+            runtime = ExtensionRuntime(
+                registry=create_builtin_extension_registry(),
+                task_runner=ActionTaskRunner(queue_factory=lambda: queue),
+            )
+
+            accepted = runtime.execute_action("dsa.analyze_stock", {}, {"caller": "agent"})
+            task = queue.get_task(accepted.task_id)
+
+            self.assertTrue(accepted.ok)
+            self.assertEqual(accepted.status, "accepted")
+            self.assertIsNotNone(task)
+            self.assertEqual(task.status, TaskStatus.FAILED)
+            self.assertEqual(task.error, "handler_error: Action handler failed.")
+        finally:
+            AnalysisTaskQueue._instance = original_instance
 
     def test_builtin_runtime_registers_core_actions(self):
         runtime = create_builtin_extension_runtime()
