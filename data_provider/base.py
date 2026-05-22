@@ -74,6 +74,7 @@ def normalize_stock_code(stock_code: str) -> str:
     - 'SZ000001'    -> '000001'   (strip SZ prefix)
     - 'BJ920748'    -> '920748'   (strip BJ prefix, BSE)
     - 'sh600519'    -> '600519'   (case-insensitive)
+    - 'sh.600519'   -> '600519'   (strip dotted SH prefix)
     - '600519.SH'   -> '600519'   (strip .SH suffix)
     - '000001.SZ'   -> '000001'   (strip .SZ suffix)
     - '920748.BJ'   -> '920748'   (strip .BJ suffix, BSE)
@@ -92,6 +93,12 @@ def normalize_stock_code(stock_code: str) -> str:
         candidate = upper[2:]
         if candidate.isdigit() and 1 <= len(candidate) <= 5:
             return f"HK{candidate.zfill(5)}"
+
+    # Strip dotted exchange prefix (e.g. SH.600519 -> 600519)
+    if '.' in code:
+        prefix, base = code.split('.', 1)
+        if prefix.upper() in ('SH', 'SZ', 'SS', 'BJ') and base.isdigit():
+            return base
 
     # Strip SH/SZ prefix (e.g. SH600519 -> 600519)
     if upper.startswith(('SH', 'SZ')) and not upper.startswith('SH.') and not upper.startswith('SZ.'):
@@ -205,7 +212,7 @@ def is_bse_code(code: str) -> bool:
     - Subscription codes: 889xxx
     Note: 900xxx are Shanghai B-shares and must return False.
     """
-    c = (code or "").strip().split(".")[0]
+    c = normalize_stock_code(code or "")
     if len(c) != 6 or not c.isdigit():
         return False
 

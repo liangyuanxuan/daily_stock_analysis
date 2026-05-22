@@ -357,8 +357,13 @@ class TushareFetcher(BaseFetcher):
         """
         raw_code = stock_code.strip()
         
-        # Already has suffix
+        # Already has suffix or a dotted exchange prefix such as SH.600519.
         if '.' in raw_code:
+            code = normalize_stock_code(raw_code)
+            exchange_hint = self._detect_exchange_hint(raw_code)
+            if exchange_hint in ("SH", "SZ", "BJ") and code.isdigit():
+                return f"{code}.{exchange_hint}"
+
             ts_code = raw_code.upper()
             if ts_code.endswith('.SS'):
                 return f"{ts_code[:-3]}.SH"

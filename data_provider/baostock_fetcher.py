@@ -29,7 +29,14 @@ from tenacity import (
     before_sleep_log,
 )
 
-from .base import BaseFetcher, DataFetchError, STANDARD_COLUMNS, is_bse_code, _is_hk_market
+from .base import (
+    BaseFetcher,
+    DataFetchError,
+    STANDARD_COLUMNS,
+    is_bse_code,
+    normalize_stock_code,
+    _is_hk_market,
+)
 import os
 
 logger = logging.getLogger(__name__)
@@ -136,18 +143,29 @@ class BaostockFetcher(BaseFetcher):
         Returns:
             Baostock 格式代码，如 'sh.600519', 'sz.000001'
         """
-        code = stock_code.strip()
+        raw_code = stock_code.strip()
+        upper = raw_code.upper()
 
         # HK stocks are not supported by Baostock
-        if _is_hk_market(code):
-            raise DataFetchError(f"BaostockFetcher 不支持港股 {code}，请使用 AkshareFetcher")
+        if _is_hk_market(raw_code):
+            raise DataFetchError(f"BaostockFetcher 不支持港股 {raw_code}，请使用 AkshareFetcher")
 
-        # 已经包含前缀的情况
-        if code.startswith(('sh.', 'sz.')):
-            return code.lower()
-        
-        # 去除可能的后缀
-        code = code.replace('.SH', '').replace('.SZ', '').replace('.sh', '').replace('.sz', '')
+        # 已经包含 Baostock 前缀的情况，兼容 STOCK_LIST 被统一转大写后的 SH.600519。
+        if upper.startswith(('SH.', 'SZ.')):
+            prefix, code = upper.split('.', 1)
+            if code.isdigit() and len(code) == 6:
+                return f"{prefix.lower()}.{code}"
+
+        exchange_hint = None
+        if upper.startswith(('SH', 'SS')) or upper.endswith(('.SH', '.SS')):
+            exchange_hint = 'sh'
+        elif upper.startswith('SZ') or upper.endswith('.SZ'):
+            exchange_hint = 'sz'
+
+        code = normalize_stock_code(raw_code)
+
+        if exchange_hint in ('sh', 'sz') and code.isdigit() and len(code) == 6:
+            return f"{exchange_hint}.{code}"
         
         # ETF: Shanghai ETF (51xx, 52xx, 56xx, 58xx) -> sh; Shenzhen ETF (15xx, 16xx, 18xx) -> sz
         if len(code) == 6:
