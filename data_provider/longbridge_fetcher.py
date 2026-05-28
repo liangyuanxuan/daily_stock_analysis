@@ -315,6 +315,13 @@ def _oauth_reauth_not_supported(url: str) -> None:
     )
 
 
+def _oauth_sdk_unavailable_error() -> RuntimeError:
+    return RuntimeError(
+        "当前安装的 longbridge SDK 不支持 OAuth 2.0（缺少 OAuthBuilder/Config.from_oauth）。"
+        "请在支持该 SDK 版本的平台安装 longbridge>=4.0.0，或继续使用 Legacy 三件套。"
+    )
+
+
 def _longbridge_credentials(config: Any = None) -> Dict[str, Optional[str]]:
     """Collect Longbridge auth inputs from Config/env without exposing secrets."""
     app_key = _clean_optional(getattr(config, "longbridge_app_key", None))
@@ -534,8 +541,14 @@ class LongbridgeFetcher(BaseFetcher):
                             oauth = OAuthBuilder(oauth_client_id).build(
                                 _oauth_reauth_not_supported,
                             )
-                            lb_config = Config.from_oauth(oauth)
+                            from_oauth = getattr(Config, "from_oauth", None)
+                            if from_oauth is None:
+                                raise AttributeError("Config.from_oauth")
+                            lb_config = from_oauth(oauth)
                             logger.info("[Longbridge] Config.from_oauth() 创建成功")
+                        except (ImportError, AttributeError):
+                            oauth_error = _oauth_sdk_unavailable_error()
+                            logger.warning("[Longbridge] OAuth SDK 不可用: %s", oauth_error)
                         except Exception as exc:
                             oauth_error = exc
                             logger.warning("[Longbridge] OAuth 初始化失败: %s", exc)

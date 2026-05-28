@@ -218,6 +218,38 @@ class TestLongbridgeAuthSelection(unittest.TestCase):
         mock_config.from_apikey.assert_not_called()
 
     @patch("src.config.get_config")
+    def test_oauth_sdk_without_oauth_api_fails_closed_with_clear_log(self, mock_get_config):
+        mock_get_config.return_value = self._config(oauth_client_id="client-1")
+        mock_lb_module = types.ModuleType("longbridge")
+        mock_lb_openapi = types.ModuleType("longbridge.openapi")
+        mock_config = MagicMock()
+        mock_quote_context = MagicMock(return_value="quote-context")
+        mock_lb_openapi.Config = mock_config
+        mock_lb_openapi.QuoteContext = mock_quote_context
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            token_cache = Path(tmpdir) / "client-1"
+            token_cache.write_text('{"refresh_token":"valid-token"}', encoding="utf-8")
+            with patch.dict("sys.modules", {"longbridge": mock_lb_module, "longbridge.openapi": mock_lb_openapi}), patch.dict(
+                os.environ,
+                {
+                    "LONGBRIDGE_OAUTH_CLIENT_ID": "client-1",
+                    "LONGBRIDGE_APP_KEY": "",
+                    "LONGBRIDGE_APP_SECRET": "",
+                    "LONGBRIDGE_ACCESS_TOKEN": "",
+                },
+            ), patch("data_provider.longbridge_fetcher._longbridge_config_kwargs", return_value={}), patch(
+                "data_provider.longbridge_fetcher._oauth_token_cache_path",
+                return_value=token_cache,
+            ), self.assertLogs("data_provider.longbridge_fetcher", level="WARNING") as logs:
+                fetcher = LongbridgeFetcher()
+                ctx = fetcher._get_ctx()
+
+        self.assertIsNone(ctx)
+        self.assertIn("不支持 OAuth 2.0", "\n".join(logs.output))
+        mock_quote_context.assert_not_called()
+
+    @patch("src.config.get_config")
     def test_oauth_invalid_cache_content_skips_oauth_reauth_and_fails_closed(self, mock_get_config):
         mock_get_config.return_value = self._config(oauth_client_id="client-1")
         modules = self._install_mock_longbridge()
