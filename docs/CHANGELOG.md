@@ -21,6 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 - [修复] 加固 LLM channel base_url 校验，拒绝反斜杠、空白/控制字符与 userinfo 形式，避免与 `requests` 主机解析差异导致 SSRF 绕过。
 - [文档] 补充 `docs/llm-providers.md` base_url 兼容说明：列出可继续使用的常见 LLM 地址，并说明 `invalid_url` 配置的清理与恢复路径。
+- [文档] 补充 SSRF 收紧的兼容性依据：明确依赖版本边界、requests/urlparse 解析一致性说明及回归测试覆盖范围。
 
 ## [3.19.0] - 2026-05-29
 
