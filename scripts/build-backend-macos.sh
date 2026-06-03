@@ -44,6 +44,9 @@ log "Installing backend dependencies..."
 log "Checking python-multipart availability..."
 "${PYTHON_BIN}" -c "import multipart, multipart.multipart"
 
+log "Checking AlphaSift adapter availability..."
+"${PYTHON_BIN}" -c "import alphasift.dsa_adapter"
+
 if [[ -d "${ROOT_DIR}/dist/backend" ]]; then
   rm -rf "${ROOT_DIR}/dist/backend"
 fi
@@ -74,6 +77,7 @@ hidden_imports=(
   "api.v1.endpoints.history"
   "api.v1.endpoints.stocks"
   "api.v1.endpoints.health"
+  "api.v1.endpoints.alphasift"
   "api.v1.schemas"
   "api.v1.schemas.analysis"
   "api.v1.schemas.history"
@@ -85,6 +89,7 @@ hidden_imports=(
   "src.services.task_queue"
   "src.services.analysis_service"
   "src.services.history_service"
+  "src.services.alphasift_service"
   "uvicorn.logging"
   "uvicorn.loops"
   "uvicorn.loops.auto"
@@ -104,6 +109,7 @@ done
 
 pushd "${ROOT_DIR}" >/dev/null
 cmd=("${PYTHON_BIN}" -m PyInstaller --name stock_analysis --onedir --noconfirm --noconsole --add-data "static:static" --add-data "strategies:strategies" --collect-data litellm --collect-data tiktoken)
+cmd+=("--collect-data" "alphasift")
 cmd+=("${hidden_import_args[@]}" "main.py")
 
 echo "Running: ${cmd[*]}"
